@@ -6,24 +6,24 @@ from typing import NamedTuple, Union
 # Simulation Parameters & Material Properties
 
 class electron_properties:
-    mass: float = 1
-    charge: float = 1
+    mass: float = 9.1093837e-31
+    charge: float = 1.60217663E-19
 
 class anode_properties:
-    deltaX: float = 1.0
-    deltaV: float = 1.0
+    deltaX: float = .01
+    deltaV: float = 3000 # Volts
     E_Field: float = deltaV/deltaX
 
 class plate_properties:
-    deltaY: float = 1.0
-    deltaV: float = 1.0
+    deltaY: float = .05 # cm
+    deltaV: float = 3000 # Volts
     E_Field: float = (3/4) * deltaV/deltaY
 
 electron    = electron_properties()
 anode       = anode_properties()
 plates      = plate_properties()
 
-# Vector Functions 
+# Vector Functions and Elementary Vectors
 vector = np.array
 
 zeroVector  = vector([0.0,0.0])
@@ -52,7 +52,7 @@ class simulation:
             return f"@ Time: {time}\nPosition:     [{pos[0]},{pos[1]}]\nVelocity:     [{vel[0]},{vel[1]}]\nAcceleration: [{acc[0]},{acc[1]}]"
 
     records: list[recordStructure] = list()
-    dt:float = None
+    dt:float = None # dt (to be assigned upon calling start method)
 
     def getRecords(self, *args: Union[str, tuple[str, int]]) -> Union[list[Union[float, vector]],None]:
         # *args will only recieve two types of arguments. Strings like: "position", "time", etc.
@@ -95,59 +95,67 @@ class simulation:
                 print(f"Error(IndexError): Function \"{className}.getRecords()\"; record propery named \"{properyStringName}\" does no have index/dimension \"{dimention}\".")
         return recordCollectionArray
             
-    def makeRecord(self, pos: vector, vel: vector, acc: vector, simTime: float) -> None:
+    def makeRecord(self, pos: vector, vel: vector, acc: vector, simTime: float) -> None: # Produce new record for calculated simulation data
         self.records.append(self.recordStructure(position = pos, velocity = vel, acceleration = acc, simulationTime = simTime))
 
-    def latestRecord(self) -> recordStructure:
+    def latestRecord(self) -> recordStructure: # Return latest kinematic data calculated during simulation
         return self.records[-1]
     
-    def kinematicStep(self, acc: vector, returnResults = False) -> Union[None, list[vector]]:
+    def kinematicStep(self, acc: vector, displayResults = False) -> Union[None, list[vector]]: # To vector math for kinematics
         [oldPos,oldVel,lastTime] = [self.latestRecord().position, self.latestRecord().velocity, self.latestRecord().simulationTime]
         
         velNew = oldVel + acc * self.dt
         posNew = oldPos + velNew * self.dt + (.5) * acc * self.dt * self.dt
-
         self.makeRecord(posNew, velNew, acc, lastTime + self.dt)
 
-        return returnResults if {"position": posNew, "velocity": velNew, "acceleration": acc} else None
+        if displayResults:
+            clear = '\r' + " " * 100 + '\r'
+            output = f"\rTime:      {'%.4f' % (lastTime + self.dt)}\nPosition: ({'%.4f' % posNew[0]},{'%.4f' % posNew[1]})\nVelocity: ({'%.4f' % velNew[0]},{'%.4f' % velNew[1]})\nAccel:    ({'%.4f' % acc[0]},{'%.4f' % acc[1]})"
+            print(output, end= '', flush=True)
+            print(clear +'\033[F' + clear + '\033[F' + clear + '\033[F' + clear, end='')
+            #print('\r'+'%.4f' % (lastTime + self.dt), end="", flush=True)
+            #print("\r", end="", flush=True)
+        
     
-    def start(self, dt):
+    def start(self, dt, displayLive = False):
         simulationComplete = False
         self.dt = dt
 
-        #sim.makeRecord(xHat * (-anode.deltaX), zeroVector, yHat, 0.0)
-        self.makeRecord(yHat*1, zeroVector, zeroVector, 0.0)
-        print(yHat*1)
+        self.makeRecord(-xHat*(anode.deltaX), zeroVector, zeroVector, 0.0) # Inital Conditions
 
-        while not simulationComplete:        
-            '''
-            if (xPos < 0):
-                # Anode Acceleration Phase
-                self.kinematicStep(yHat)
-            elif (xPos > 0):
-                # Plate Acceleration Phase
-                self.kinematicStep(-self.latestRecord().position[1] * yHat)
+        while not simulationComplete: # RUNTIME!!!!
+            [xPosition, yPosition] = self.latestRecord().position
 
-            if (yPos >= (.5 * deltaY_plates)):
-                # Simulation Complete
+            if (xPosition < 0):   # Anode Acceleration Phase
+                self.kinematicStep(xHat * anode.E_Field * electron.charge / electron.mass)
+            elif (xPosition > 0): # Plate Acceleration Phase
+                self.kinematicStep(yHat * plates.E_Field * electron.charge / electron.mass)
+
+            if (yPosition >= (.5 * plates.deltaY)):
                 simulationComplete = True
                 print('Simulation Complete')
-                '''
-            
-            if (self.latestRecord().simulationTime >= 100):
-                simulationComplete = True
-        
-        #fig, ax = plt.subplots()
-        #ax.plot(x, y)
-        #plt.show()
-
-# Runtime
-sim = simulation()
-sim.start(.001)
-[yPosition, time] = sim.getRecords(("position", 1), "simulationTime")
+    
 
 
-fig, ax = plt.subplots()
-ax.plot(time, yPosition)
+sim = simulation() # Instanciate simulation Class
+sim.start(1E-10, False) # Choose dt, choose live display of data in console (broken)
+[positionX, positionY, time, acceleration] = sim.getRecords(("position", 0),("position", 1), "simulationTime", "acceleration") # Retrieve data
+
+fig, ax = plt.subplots(3)
+plt.suptitle('Simulation Results')
+fig.tight_layout()
+ax[0].plot(time, positionX)
+ax[0].set_title('x-position vs. time')
+ax[0].set_xticks(time)
+
+ax[1].plot(time, positionY)
+ax[1].set_title('y-position vs. time')
+ax[1].set_xticks(time)
+
+ax[2].plot(positionX, positionY)
+ax[2].set_title('y-position vs. x-position')
+ax[2].set_xticks(positionX[::3])
+
 plt.show()
+
 
